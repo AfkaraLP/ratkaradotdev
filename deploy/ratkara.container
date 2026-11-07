@@ -8,6 +8,9 @@ PublishPort=127.0.0.1:6701:8080
 PublishPort=2223:2222
 Environment=RATKARA_SITE_URL=https://afkara.dev
 Volume=ratkara:/data
+# star counts from GitHub need a token behind a shared (CGNAT) IPv4, any token without scopes works:
+#   printf %s "$TOKEN" | podman secret create ratkara-github-token -
+# Secret=ratkara-github-token,type=env,target=RATKARA_GITHUB_TOKEN
 # exec form, the image has no shell
 HealthCmd=["/bin/ratkara-server", "--health-check"]
 HealthInterval=10s

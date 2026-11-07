@@ -38,4 +38,8 @@ pub struct Args {
     /// Ask the running http server for / and exit, for container health checks
     #[arg(long)]
     pub health_check: bool,
+
+    /// Only used for GitHub star counts, raises the rate limit on shared (CGNAT) IPs
+    #[arg(long, env = "RATKARA_GITHUB_TOKEN", hide_env_values = true)]
+    pub github_token: Option<String>,
 }

@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
     if args.health_check {
         return health_check(args.http_port);
     }
-    let stats = stats::spawn_refresh();
+    let stats = stats::spawn_refresh(args.github_token.clone());
     let servers = async {
         tokio::try_join!(
             ssh::serve(&args.host, args.ssh_port, &args.host_key, stats.clone()),
