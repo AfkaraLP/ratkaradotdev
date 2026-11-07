@@ -28,6 +28,7 @@ Vim bindings, `v` to pick a link (opens it in the browser, copies it over ssh).
 direnv allow                                  # or: nix develop
 cd crates/web && trunk serve                  # web with live reload on :8090
 nix build .#web && cargo run -p ratkara-server -- --web-dir result
+nix flake check                               # fmt, clippy pedantic (native + wasm), builds
 ```
 
 ## Nix
@@ -41,15 +42,17 @@ nix run .            # ratkara-server, serving .#web on :8080 and ssh on :2222
 
 ## Deploy
 
-CI publishes `ghcr.io/afkaralp/ratkaradotdev` on every push to `main`, the host pulls it:
+CI checks, smoke tests the image and, on `main`, publishes `ghcr.io/afkaralp/ratkaradotdev` (`latest` + `sha-*`, with build provenance). The host pulls it, health checks it and rolls back if it doesn't answer:
 
 ```sh
-mkdir -p ~/ratkaradotdev && cp deploy/compose.yml ~/ratkaradotdev/
+mkdir -p ~/ratkaradotdev && cp deploy/{compose.yml,update.sh} ~/ratkaradotdev/
 cd ~/ratkaradotdev && docker compose up -d
 
 # crontab -e
-*/5 * * * * cd ~/ratkaradotdev && docker compose pull -q && docker compose up -d
+*/5 * * * * ~/ratkaradotdev/update.sh >> ~/ratkaradotdev/cd.log 2>&1
 ```
+
+Verify an image: `gh attestation verify oci://ghcr.io/afkaralp/ratkaradotdev:latest -R AfkaraLP/ratkaradotdev`
 
 Behind Cloudflare, turn off "Always Use HTTPS": the server redirects browsers itself so `curl afkara.dev` gets text.
 
