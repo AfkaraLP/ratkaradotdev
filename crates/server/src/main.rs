@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 use ratkara_core::content::year_from_unix;
+use tokio::signal::unix::{SignalKind, signal};
 
 use crate::args::Args;
 
@@ -34,15 +35,32 @@ async fn main() -> anyhow::Result<()> {
         return health_check(args.http_port);
     }
     let stats = stats::spawn_refresh();
-    tokio::try_join!(
-        ssh::serve(&args.host, args.ssh_port, &args.host_key, stats.clone()),
-        http::serve(
-            args.http_host.as_deref().unwrap_or(&args.host),
-            args.http_port,
-            args.web_dir.clone(),
-            args.site_url.clone(),
-            stats,
-        ),
-    )?;
+    let servers = async {
+        tokio::try_join!(
+            ssh::serve(&args.host, args.ssh_port, &args.host_key, stats.clone()),
+            http::serve(
+                args.http_host.as_deref().unwrap_or(&args.host),
+                args.http_port,
+                args.web_dir.clone(),
+                args.site_url.clone(),
+                stats,
+            ),
+        )
+        .map(|_| ())
+    };
+    tokio::select! {
+        result = servers => result,
+        result = shutdown() => result,
+    }
+}
+
+// as pid 1 in a container nothing handles SIGTERM for us
+async fn shutdown() -> anyhow::Result<()> {
+    let mut terminate = signal(SignalKind::terminate())?;
+    tokio::select! {
+        _ = terminate.recv() => {}
+        result = tokio::signal::ctrl_c() => result?,
+    }
+    eprintln!("shutting down");
     Ok(())
 }

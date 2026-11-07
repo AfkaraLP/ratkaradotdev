@@ -56,6 +56,12 @@ jobs:
         timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/2222; head -c 7 <&3' | grep -q SSH-2.0
         docker exec smoke /bin/ratkara-server --health-check
         docker inspect --format '{{json .Config.Healthcheck}}' smoke | grep -q health-check
+        timeout 5 docker stop -t 30 smoke
+    - name: Quadlet
+      run: |
+        QUADLET_UNIT_DIRS="$PWD/deploy" /usr/libexec/podman/quadlet -dryrun -user > quadlet.out
+        grep -q -- '--sdnotify=healthy' quadlet.out
+        grep -q -- '--health-cmd "\[' quadlet.out
     - name: Smoke test logs
       if: failure()
       run: docker logs smoke

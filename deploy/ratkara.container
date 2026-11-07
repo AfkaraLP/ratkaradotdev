@@ -8,8 +8,9 @@ PublishPort=127.0.0.1:6701:8080
 PublishPort=2223:2222
 Environment=RATKARA_SITE_URL=https://afkara.dev
 Volume=ratkara:/data
-HealthCmd=/bin/ratkara-server --health-check
-HealthInterval=30s
+# exec form, the image has no shell
+HealthCmd=["/bin/ratkara-server", "--health-check"]
+HealthInterval=10s
 HealthStartPeriod=5s
 HealthOnFailure=kill
 # a start (and so an auto-update) only succeeds once the health check passes,
