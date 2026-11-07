@@ -79,6 +79,8 @@ let
     default = packages.server;
   }
   // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+    deploy = import ./deploy.nix { inherit pkgs; };
+
     image = pkgs.dockerTools.buildLayeredImage {
       name = "ghcr.io/afkaralp/ratkaradotdev";
       tag = "latest";
@@ -105,6 +107,11 @@ let
 
   checks = {
     inherit (packages) server web;
+  }
+  // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+    inherit (packages) deploy;
+  }
+  // {
     fmt = craneLib.cargoFmt { inherit (common) src pname version; };
     clippy = craneLib.cargoClippy (
       native

@@ -42,14 +42,13 @@ nix run .            # ratkara-server, serving .#web on :8080 and ssh on :2222
 
 ## Deploy
 
-CI checks, smoke tests the image and, on `main`, publishes `ghcr.io/afkaralp/ratkaradotdev` (`latest` + `sha-*`, with build provenance). The host pulls it, health checks it and rolls back if it doesn't answer:
+CI checks, smoke tests the image and, on `main`, publishes `ghcr.io/afkaralp/ratkaradotdev` (`latest` + `sha-*`, with build provenance). The host runs `.#deploy` from the flake: it pulls the image, health checks it and rolls back if it doesn't answer. On a fresh host the first run does the initial deploy:
 
 ```sh
-mkdir -p ~/ratkaradotdev && cp deploy/{compose.yml,update.sh} ~/ratkaradotdev/
-cd ~/ratkaradotdev && docker compose up -d
+mkdir -p ~/.local/state/ratkaradotdev
 
 # crontab -e
-*/5 * * * * ~/ratkaradotdev/update.sh >> ~/ratkaradotdev/cd.log 2>&1
+*/5 * * * * nix --extra-experimental-features 'nix-command flakes' run github:AfkaraLP/ratkaradotdev#deploy >> ~/.local/state/ratkaradotdev/deploy.log 2>&1
 ```
 
 Verify an image: `gh attestation verify oci://ghcr.io/afkaralp/ratkaradotdev:latest -R AfkaraLP/ratkaradotdev`
