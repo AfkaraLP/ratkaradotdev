@@ -5,7 +5,7 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use ratkara_core::{App, Platform, ansi::to_ansi};
 use tower_http::services::{ServeDir, ServeFile};
@@ -50,9 +50,14 @@ async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Respons
         .iter()
         .any(|cli| agent.starts_with(cli))
         .then(|| site.print(&req));
-    let mut response = match text {
-        Some(text) => text,
-        None => next.run(req).await,
+    let insecure = header_str(req.headers(), "cf-visitor").contains(r#""scheme":"http""#);
+    let mut response = match (text, insecure, &site.url) {
+        (Some(text), ..) => text,
+        (None, true, Some(url)) => {
+            let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
+            Redirect::permanent(&format!("{url}{path}")).into_response()
+        }
+        (None, ..) => next.run(req).await,
     };
     response
         .headers_mut()

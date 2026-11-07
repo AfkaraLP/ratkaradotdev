@@ -4,7 +4,6 @@ My personal site, now as a TUI. Same app in the browser through [ratzilla], over
 
 ```sh
 curl afkara.dev
-ssh -p 2222 afkara.dev
 ```
 
 ## Layout
@@ -39,6 +38,20 @@ nix run .            # ratkara-server, serving .#web on :8080 and ssh on :2222
 ```
 
 `wasm-bindgen` is pinned in `crates/web/Cargo.toml` and has to match `wasmBindgenCli` in `flake.nix`.
+
+## Deploy
+
+CI publishes `ghcr.io/afkaralp/ratkaradotdev` on every push to `main`, the host pulls it:
+
+```sh
+mkdir -p ~/ratkaradotdev && cp deploy/compose.yml ~/ratkaradotdev/
+cd ~/ratkaradotdev && docker compose up -d
+
+# crontab -e
+*/5 * * * * cd ~/ratkaradotdev && docker compose pull -q && docker compose up -d
+```
+
+Behind Cloudflare, turn off "Always Use HTTPS": the server redirects browsers itself so `curl afkara.dev` gets text.
 
 ## NixOS
 

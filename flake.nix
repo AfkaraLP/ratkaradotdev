@@ -76,55 +76,79 @@
             version = "0.1.0";
           };
         in
-        rec {
-          server = craneLib.buildPackage (
-            common
-            // {
-              pname = "ratkara-server";
-              cargoExtraArgs = "-p ratkara-server";
-              cargoArtifacts = craneLib.buildDepsOnly (common // { cargoExtraArgs = "-p ratkara-server"; });
-              nativeBuildInputs = [ pkgs.makeWrapper ];
-              postInstall = ''
-                wrapProgram $out/bin/ratkara-server --set-default RATKARA_WEB_DIR ${web}
-              '';
-              meta.mainProgram = "ratkara-server";
-            }
-          );
+        let
+          site = rec {
+            server = craneLib.buildPackage (
+              common
+              // {
+                pname = "ratkara-server";
+                cargoExtraArgs = "-p ratkara-server";
+                cargoArtifacts = craneLib.buildDepsOnly (common // { cargoExtraArgs = "-p ratkara-server"; });
+                nativeBuildInputs = [ pkgs.makeWrapper ];
+                postInstall = ''
+                  wrapProgram $out/bin/ratkara-server --set-default RATKARA_WEB_DIR ${web}
+                '';
+                meta.mainProgram = "ratkara-server";
+              }
+            );
 
-          pages = craneLib.buildPackage (
-            common
-            // {
-              pname = "ratkara-pages";
-              cargoExtraArgs = "-p ratkara-core --bin ratkara-pages";
-            }
-          );
+            pages = craneLib.buildPackage (
+              common
+              // {
+                pname = "ratkara-pages";
+                cargoExtraArgs = "-p ratkara-core --bin ratkara-pages";
+              }
+            );
 
-          web = craneLib.buildTrunkPackage (
-            common
-            // {
-              pname = "ratkara-web";
-              cargoExtraArgs = "-p ratkara-web";
-              # trunk resolves the crate from the working directory
-              preBuild = "cd crates/web";
-              trunkIndexPath = "index.html";
-              installPhaseCommand = ''
-                cp -r dist $out
-                ${pages}/bin/ratkara-pages $out ${siteUrl}
-              '';
-              CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-              cargoArtifacts = craneLib.buildDepsOnly (
-                common
-                // {
-                  cargoExtraArgs = "-p ratkara-web";
-                  CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-                  doCheck = false;
-                }
-              );
-              wasm-bindgen-cli = pkgs.wasmBindgenCli;
-            }
-          );
+            web = craneLib.buildTrunkPackage (
+              common
+              // {
+                pname = "ratkara-web";
+                cargoExtraArgs = "-p ratkara-web";
+                # trunk resolves the crate from the working directory
+                preBuild = "cd crates/web";
+                trunkIndexPath = "index.html";
+                installPhaseCommand = ''
+                  cp -r dist $out
+                  ${pages}/bin/ratkara-pages $out ${siteUrl}
+                '';
+                CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+                cargoArtifacts = craneLib.buildDepsOnly (
+                  common
+                  // {
+                    cargoExtraArgs = "-p ratkara-web";
+                    CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+                    doCheck = false;
+                  }
+                );
+                wasm-bindgen-cli = pkgs.wasmBindgenCli;
+              }
+            );
 
-          default = server;
+            default = server;
+          };
+        in
+        site
+        // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          image = pkgs.dockerTools.buildLayeredImage {
+            name = "ghcr.io/afkaralp/ratkaradotdev";
+            tag = "latest";
+            fakeRootCommands = ''
+              mkdir -p data
+              chown 65534:65534 data
+            '';
+            config = {
+              Entrypoint = [ (lib.getExe site.server) ];
+              User = "65534:65534";
+              Env = [ "RATKARA_HOST_KEY=/data/host_key" ];
+              ExposedPorts = {
+                "2222/tcp" = { };
+                "8080/tcp" = { };
+              };
+              Volumes."/data" = { };
+              Labels."org.opencontainers.image.source" = "https://github.com/AfkaraLP/ratkaradotdev";
+            };
+          };
         }
       );
 

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build:
 
@@ -19,4 +23,13 @@ jobs:
         nix develop -c cargo clippy --workspace --exclude ratkara-web --all-targets -- -D clippy::pedantic
         nix develop -c cargo clippy -p ratkara-web --target wasm32-unknown-unknown -- -D clippy::pedantic
     - name: Build
-      run: nix build .#server
+      run: nix build .#image
+    - name: Publish
+      if: github.event_name == 'push'
+      env:
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        for tag in latest ${{ github.sha }}; do
+          nix run nixpkgs#skopeo -- copy --dest-creds "${{ github.actor }}:$TOKEN" \
+            docker-archive:result docker://ghcr.io/afkaralp/ratkaradotdev:$tag
+        done
