@@ -431,14 +431,16 @@ impl App {
             width,
             ..area
         };
+        let tab_rows = tab_layout(area.width.saturating_sub(4));
+        let header_height = 3 + u16::try_from(tab_rows.len()).unwrap_or(1);
         let [header, body, footer] = Layout::vertical([
-            Constraint::Length(4),
+            Constraint::Length(header_height),
             Constraint::Fill(1),
             Constraint::Length(1),
         ])
         .areas(area);
 
-        self.draw_header(frame, header);
+        self.draw_header(frame, header, &tab_rows);
 
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
@@ -459,13 +461,19 @@ impl App {
         self.draw_footer(frame, footer);
     }
 
-    fn draw_header(&mut self, frame: &mut ratatui::Frame, area: Rect) {
+    fn draw_header(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        tab_rows: &[Vec<(Tab, String)>],
+    ) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(self.theme.border);
         let inner = block.inner(area).inner(Margin::new(1, 0));
         frame.render_widget(block, area);
-        let [brand, tabs] = Layout::vertical([Constraint::Length(1); 2]).areas(inner);
+        let [brand, tabs] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(inner);
 
         let mut name = vec![Span::styled(content::NAME, self.theme.heading)];
         if brand.width as usize > content::NAME.len() + content::TAGLINE.len() + 3 {
@@ -475,19 +483,17 @@ impl App {
         frame.render_widget(Line::from(name), brand);
         self.last.hits.push((brand, Hit::Tab(Tab::About)));
 
-        let numbered = Tab::ALL.iter().map(|t| t.title().len() + 4).sum::<usize>() + 4;
-        let numbered = (tabs.width as usize) >= numbered;
-        let mut x = tabs.x;
-        for (idx, tab) in Tab::ALL.into_iter().enumerate() {
-            let prefix = numbered.then(|| format!("[{}] ", idx + 1));
-            let label = format!("{}{}", prefix.unwrap_or_default(), tab.title());
-            let current = usize::from(tab == self.page.tab());
-            let style = [Style::new(), self.theme.selected.reversed()][current];
-            let w = u16::try_from(label.len()).unwrap_or_default();
-            let rect = Rect::new(x, tabs.y, w, 1).intersection(tabs);
-            frame.render_widget(Span::styled(label, style), rect);
-            self.last.hits.push((rect, Hit::Tab(tab)));
-            x = x.saturating_add(w + 1);
+        for (y, row) in (tabs.y..).zip(tab_rows) {
+            let mut x = tabs.x;
+            for (tab, label) in row {
+                let current = usize::from(*tab == self.page.tab());
+                let style = [Style::new(), self.theme.selected.reversed()][current];
+                let w = u16::try_from(label.len()).unwrap_or_default();
+                let rect = Rect::new(x, y, w, 1).intersection(tabs);
+                frame.render_widget(Span::styled(label.clone(), style), rect);
+                self.last.hits.push((rect, Hit::Tab(*tab)));
+                x = x.saturating_add(w + 1);
+            }
         }
     }
 
@@ -889,6 +895,37 @@ impl App {
             .chain([Line::default()])
             .collect()
     }
+}
+
+/// Numbered labels on one row when they fit, plain titles wrapped over rows otherwise.
+fn tab_layout(width: u16) -> Vec<Vec<(Tab, String)>> {
+    let width = usize::from(width);
+    let numbered: Vec<_> = (1..)
+        .zip(Tab::ALL)
+        .map(|(n, tab)| (tab, format!("[{n}] {}", tab.title())))
+        .collect();
+    let numbered_width = numbered
+        .iter()
+        .map(|(_, label)| label.len() + 1)
+        .sum::<usize>();
+    if numbered_width <= width + 1 {
+        return vec![numbered];
+    }
+
+    let mut rows = vec![Vec::new()];
+    let mut used = 0;
+    for tab in Tab::ALL {
+        let len = tab.title().len();
+        if used > 0 && used + len > width {
+            rows.push(Vec::new());
+            used = 0;
+        }
+        if let Some(row) = rows.last_mut() {
+            row.push((tab, tab.title().to_string()));
+        }
+        used += len + 1;
+    }
+    rows
 }
 
 fn has_url(line: &Line) -> bool {

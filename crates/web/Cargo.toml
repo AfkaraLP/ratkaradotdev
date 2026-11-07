@@ -14,11 +14,17 @@ wasm-bindgen = "=0.2.130"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Document",
+    "Element",
     "FontFaceSet",
     "History",
     "HtmlElement",
     "Location",
+    "NodeList",
     "Response",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
+    "WheelEvent",
     "Window",
 ] }
 
