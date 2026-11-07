@@ -1,0 +1,22 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: DeterminateSystems/nix-installer-action@v16
+    - name: Lint
+      run: |
+        nix develop -c cargo clippy --workspace --exclude ratkara-web --all-targets -- -D clippy::pedantic
+        nix develop -c cargo clippy -p ratkara-web --target wasm32-unknown-unknown -- -D clippy::pedantic
+    - name: Build
+      run: nix build .#server

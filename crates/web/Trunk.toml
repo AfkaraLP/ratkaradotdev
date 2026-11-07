@@ -1,0 +1,6 @@
+[watch]
+# the app lives in core, rebuild when it (or a post) changes
+watch = [".", "../core"]
+
+[serve]
+port = 8090

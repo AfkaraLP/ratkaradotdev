@@ -1,0 +1,12 @@
+[package]
+name = "ratkara-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+pulldown-cmark = { version = "0.13.6", default-features = false }
+ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
+
+[lints]
+workspace = true
