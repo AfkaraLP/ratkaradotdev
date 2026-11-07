@@ -79,17 +79,28 @@ let
     default = packages.server;
   }
   // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-    deploy = import ./deploy.nix { inherit pkgs; };
-
     image = pkgs.dockerTools.buildLayeredImage {
       name = "ghcr.io/afkaralp/ratkaradotdev";
       tag = "latest";
+      contents = [ packages.server ];
       fakeRootCommands = ''
         mkdir -p data
         chown 65534:65534 data
       '';
       config = {
-        Entrypoint = [ (lib.getExe packages.server) ];
+        Entrypoint = [ "/bin/ratkara-server" ];
+        Healthcheck = {
+          Test = [
+            "CMD"
+            "/bin/ratkara-server"
+            "--health-check"
+          ];
+          # nanoseconds
+          Interval = 30 * 1000000000;
+          Timeout = 5 * 1000000000;
+          StartPeriod = 5 * 1000000000;
+          Retries = 3;
+        };
         User = "65534:65534";
         Env = [ "RATKARA_HOST_KEY=/data/host_key" ];
         ExposedPorts = {
@@ -107,11 +118,6 @@ let
 
   checks = {
     inherit (packages) server web;
-  }
-  // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-    inherit (packages) deploy;
-  }
-  // {
     fmt = craneLib.cargoFmt { inherit (common) src pname version; };
     clippy = craneLib.cargoClippy (
       native

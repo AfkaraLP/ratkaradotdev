@@ -18,9 +18,21 @@ fn current_year() -> u32 {
     year_from_unix(i64::try_from(secs).unwrap_or_default())
 }
 
+fn health_check(port: u16) -> anyhow::Result<()> {
+    let status = ureq::get(format!("http://127.0.0.1:{port}/"))
+        .header("User-Agent", "curl/health")
+        .call()?
+        .status();
+    anyhow::ensure!(status.is_success(), "unhealthy: {status}");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    if args.health_check {
+        return health_check(args.http_port);
+    }
     let stats = stats::spawn_refresh();
     tokio::try_join!(
         ssh::serve(&args.host, args.ssh_port, &args.host_key, stats.clone()),

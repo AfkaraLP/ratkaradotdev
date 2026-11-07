@@ -34,4 +34,8 @@ pub struct Args {
     /// Base for links in text responses, taken from the Host header if unset
     #[arg(long, env = "RATKARA_SITE_URL")]
     pub site_url: Option<String>,
+
+    /// Ask the running http server for / and exit, for container health checks
+    #[arg(long)]
+    pub health_check: bool,
 }

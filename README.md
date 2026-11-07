@@ -42,13 +42,16 @@ nix run .            # ratkara-server, serving .#web on :8080 and ssh on :2222
 
 ## Deploy
 
-CI checks, smoke tests the image and, on `main`, publishes `ghcr.io/afkaralp/ratkaradotdev` (`latest` + `sha-*`, with build provenance). The host runs `.#deploy` from the flake: it pulls the image, health checks it and rolls back if it doesn't answer. On a fresh host the first run does the initial deploy:
+CI checks, smoke tests the image and, on `main`, publishes `ghcr.io/afkaralp/ratkaradotdev` (`latest` + `sha-*`, with build provenance). The host runs it as a rootless podman quadlet. `podman auto-update` pulls new images every 5 minutes, and since the unit only counts as started once `--health-check` passes, a bad image gets rolled back automatically:
 
 ```sh
-mkdir -p ~/.local/state/ratkaradotdev
-
-# crontab -e
-*/5 * * * * nix --extra-experimental-features 'nix-command flakes' run github:AfkaraLP/ratkaradotdev#deploy >> ~/.local/state/ratkaradotdev/deploy.log 2>&1
+mkdir -p ~/.config/containers/systemd ~/.config/systemd/user/podman-auto-update.timer.d
+cp deploy/ratkara.container ~/.config/containers/systemd/
+cp deploy/auto-update.conf ~/.config/systemd/user/podman-auto-update.timer.d/
+systemctl --user daemon-reload
+systemctl --user start ratkara
+systemctl --user enable --now podman-auto-update.timer
+loginctl enable-linger
 ```
 
 Verify an image: `gh attestation verify oci://ghcr.io/afkaralp/ratkaradotdev:latest -R AfkaraLP/ratkaradotdev`

@@ -1,0 +1,24 @@
+[Unit]
+Description=afkara.dev
+
+[Container]
+Image=ghcr.io/afkaralp/ratkaradotdev:latest
+AutoUpdate=registry
+PublishPort=127.0.0.1:6701:8080
+PublishPort=2223:2222
+Environment=RATKARA_SITE_URL=https://afkara.dev
+Volume=ratkara:/data
+HealthCmd=/bin/ratkara-server --health-check
+HealthInterval=30s
+HealthStartPeriod=5s
+HealthOnFailure=kill
+# a start (and so an auto-update) only succeeds once the health check passes,
+# otherwise podman auto-update rolls back to the previous image
+Notify=healthy
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target
