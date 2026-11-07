@@ -119,6 +119,11 @@ let
   checks = {
     inherit (packages) server web;
     fmt = craneLib.cargoFmt { inherit (common) src pname version; };
+    quadlet = pkgs.runCommand "quadlet-check" { } ''
+      QUADLET_UNIT_DIRS=${../deploy} ${pkgs.podman}/libexec/podman/quadlet -dryrun -user > $out
+      grep -q -- '--sdnotify=healthy' $out
+      grep -q -- '--health-cmd "\[' $out
+    '';
     clippy = craneLib.cargoClippy (
       native
       // {

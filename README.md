@@ -28,7 +28,7 @@ Vim bindings, `v` to pick a link (opens it in the browser, copies it over ssh).
 direnv allow                                  # or: nix develop
 cd crates/web && trunk serve                  # web with live reload on :8090
 nix build .#web && cargo run -p ratkara-server -- --web-dir result
-nix flake check                               # fmt, clippy pedantic (native + wasm), builds
+nix flake check                               # fmt, clippy pedantic (native + wasm), quadlet, builds
 ```
 
 ## Nix

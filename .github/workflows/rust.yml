@@ -57,11 +57,6 @@ jobs:
         docker exec smoke /bin/ratkara-server --health-check
         docker inspect --format '{{json .Config.Healthcheck}}' smoke | grep -q health-check
         timeout 5 docker stop -t 30 smoke
-    - name: Quadlet
-      run: |
-        QUADLET_UNIT_DIRS="$PWD/deploy" /usr/libexec/podman/quadlet -dryrun -user > quadlet.out
-        grep -q -- '--sdnotify=healthy' quadlet.out
-        grep -q -- '--health-cmd "\[' quadlet.out
     - name: Smoke test logs
       if: failure()
       run: docker logs smoke
