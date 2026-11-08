@@ -58,7 +58,7 @@ let
       common
       // {
         pname = "ratkara-pages";
-        cargoExtraArgs = "-p ratkara-core --bin ratkara-pages";
+        cargoExtraArgs = "-p ratkara-pages";
         cargoArtifacts = nativeDeps;
       }
     );
@@ -73,7 +73,8 @@ let
         trunkIndexPath = "index.html";
         installPhaseCommand = ''
           cp -r dist $out
-          ${packages.pages}/bin/ratkara-pages $out ${siteUrl}
+          RATKARA_FONT_DIR=${pkgs.fira-mono}/share/fonts/truetype \
+            ${packages.pages}/bin/ratkara-pages $out ${siteUrl}
         '';
         wasm-bindgen-cli = pkgs.wasmBindgenCli;
       }

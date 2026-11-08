@@ -1,0 +1,13 @@
+[package]
+name = "ratkara-pages"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ab_glyph = "0.2.32"
+anyhow = "1.0.104"
+ratkara-core.workspace = true
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "png-format"] }
+
+[lints]
+workspace = true

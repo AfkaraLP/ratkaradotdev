@@ -1,4 +1,6 @@
-//! usage: ratkara-pages <dist> [site-url]
+//! usage: `RATKARA_FONT_DIR=<dir with FiraMono-{Regular,Bold}.ttf> ratkara-pages <dist> [site-url]`
+
+mod card;
 
 use std::{
     env, fs,
@@ -8,6 +10,8 @@ use std::{
 
 use anyhow::{Context, bail};
 use ratkara_core::{App, Platform, content};
+
+use crate::card::{Card, Fonts};
 
 const START: &str = "<!-- meta -->";
 const END: &str = "<!-- /meta -->";
@@ -20,20 +24,16 @@ fn main() -> anyhow::Result<()> {
     let site = args.next().unwrap_or_else(|| "https://afkara.dev".into());
     let site = site.trim_end_matches('/');
     let dist = Path::new(&dist);
+    let fonts = Fonts::load(Path::new(
+        &env::var("RATKARA_FONT_DIR").context("RATKARA_FONT_DIR is not set")?,
+    ))?;
 
     let template = fs::read_to_string(dist.join("index.html")).context("reading index.html")?;
     let (Some(start), Some(end)) = (template.find(START), template.find(END)) else {
         bail!("index.html is missing the {START} ... {END} block");
     };
-    // previews and cloudflare cache the image by url, so a new image needs a new url
-    let mut hasher = DefaultHasher::new();
-    fs::read(dist.join("og.png"))
-        .context("reading og.png")?
-        .hash(&mut hasher);
-    let image = format!("{site}/og.png?v={:x}", hasher.finish());
-
-    let page = |app: &App, route: &str| {
-        let head = meta(app, &format!("{site}/{route}"), &image);
+    let page = |app: &App, route: &str, image: &str| {
+        let head = meta(app, &format!("{site}/{route}"), image);
         format!(
             "{}{head}{}",
             &template[..start],
@@ -41,32 +41,67 @@ fn main() -> anyhow::Result<()> {
         )
     };
 
+    let site_card = write_card(dist, site, "og.png", &Card::Site, &fonts)?;
     let mut app = App::new(Platform::Web, 0);
-    fs::write(dist.join("index.html"), page(&app, ""))?;
+    fs::write(dist.join("index.html"), page(&app, "", &site_card))?;
 
     let routes = app.routes();
     for route in &routes {
         app.goto(route);
+        let image = match (app.date(), route.strip_prefix("blog/")) {
+            (Some(date), Some(slug)) => {
+                let card = Card::Post {
+                    title: &heading(&app),
+                    date,
+                    excerpt: &app.description(),
+                };
+                write_card(dist, site, &format!("og/{slug}.png"), &card, &fonts)?
+            }
+            _ => site_card.clone(),
+        };
         let dir = dist.join(route);
         fs::create_dir_all(&dir)?;
-        fs::write(dir.join("index.html"), page(&app, route))?;
+        fs::write(dir.join("index.html"), page(&app, route, &image))?;
     }
 
     // most static hosts serve this for unknown paths, the app shows its own 404
     app.goto("404");
-    fs::write(dist.join("404.html"), page(&app, "404"))?;
+    fs::write(dist.join("404.html"), page(&app, "404", &site_card))?;
 
     eprintln!("wrote {} pages to {}", routes.len() + 2, dist.display());
     Ok(())
 }
 
+/// Renders a card into `dist` and returns its url, versioned by content: previews and
+/// cloudflare cache images by url, so a changed card needs a new one.
+fn write_card(
+    dist: &Path,
+    site: &str,
+    path: &str,
+    card: &Card,
+    fonts: &Fonts,
+) -> anyhow::Result<String> {
+    let png = card.png(fonts)?;
+    let file = dist.join(path);
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(&file, &png)?;
+    let mut hasher = DefaultHasher::new();
+    png.hash(&mut hasher);
+    Ok(format!("{site}/{path}?v={:x}", hasher.finish()))
+}
+
+/// The page title without the site name, previews show that on their own.
+fn heading(app: &App) -> String {
+    app.title()
+        .trim_end_matches(&format!(" · {}", content::NAME))
+        .to_string()
+}
+
 fn meta(app: &App, url: &str, image: &str) -> String {
     let title = escape(&app.title());
-    // previews show the site name on their own, the tab title keeps it
-    let heading = escape(
-        app.title()
-            .trim_end_matches(&format!(" · {}", content::NAME)),
-    );
+    let heading = escape(&heading(app));
     let description = escape(&app.description());
     let (kind, published) = match app.date() {
         Some(date) => (

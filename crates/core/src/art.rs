@@ -88,10 +88,28 @@ impl Art {
             .collect()
     }
 
+    /// Every colored cell as row, column, character and `0xRRGGBB`.
+    pub fn cells(&self) -> impl Iterator<Item = (usize, usize, char, u32)> + '_ {
+        self.chars
+            .lines()
+            .zip(self.colors.lines())
+            .enumerate()
+            .flat_map(move |(row, (chars, colors))| {
+                chars
+                    .chars()
+                    .zip(colors.chars())
+                    .enumerate()
+                    .filter_map(move |(col, (ch, key))| Some((row, col, ch, self.rgb(key)?)))
+            })
+    }
+
+    fn rgb(&self, key: char) -> Option<u32> {
+        let idx = u32::from(key).checked_sub(u32::from('a'))?;
+        self.palette.get(idx as usize).copied()
+    }
+
     fn style(&self, key: char) -> Style {
-        let color = u32::from(key)
-            .checked_sub(u32::from('a'))
-            .and_then(|idx| self.palette.get(idx as usize));
-        color.map_or_else(Style::new, |&rgb| Style::new().fg(Color::from_u32(rgb)))
+        self.rgb(key)
+            .map_or_else(Style::new, |rgb| Style::new().fg(Color::from_u32(rgb)))
     }
 }

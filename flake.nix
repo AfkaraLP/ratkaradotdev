@@ -69,6 +69,8 @@
         { pkgs }:
         {
           default = pkgs.mkShell {
+            # fonts for the preview cards ratkara-pages draws
+            RATKARA_FONT_DIR = "${pkgs.fira-mono}/share/fonts/truetype";
             packages = with pkgs; [
               rustToolchain
               rust-analyzer
