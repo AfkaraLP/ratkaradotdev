@@ -13,7 +13,7 @@ use crate::{
     blog::{Post, excerpt, load_posts, render_markdown},
     content::{self, BOOKMARKS, CONTACTS, PROJECTS},
     theme::{self, Theme},
-    wrap::{Anchor, Link, urls, wrap},
+    wrap::{Anchor, Link, url_anchors, wrap},
 };
 
 const MAX_WIDTH: u16 = 100;
@@ -496,8 +496,8 @@ impl App {
                 .map(|(rect, _)| *rect)
                 .collect(),
             Some((_, Hit::Tab(tab))) if tab == self.page.tab() => Vec::new(),
-            Some((rect, Hit::Tab(_) | Hit::Key(_))) => vec![rect],
-            Some((_, Hit::Item(_))) | None => Vec::new(),
+            Some((rect, Hit::Tab(_) | Hit::Key(_) | Hit::Item(_))) => vec![rect],
+            None => Vec::new(),
         };
         for rect in rects {
             frame.buffer_mut().set_style(rect, self.theme.hover);
@@ -660,10 +660,6 @@ impl App {
 
     fn draw_list(&mut self, frame: &mut ratatui::Frame, area: Rect, view: View) {
         self.last.links = view.links;
-        for link in &mut self.last.links {
-            let row = link.row();
-            link.entry = view.entries.iter().position(|range| range.contains(&row));
-        }
 
         let height = area.height as usize;
         let offset = view
@@ -772,6 +768,7 @@ impl App {
         };
         let mut lines = self.list_header(width);
         let mut entries = Vec::new();
+        let mut targets = Vec::new();
         for (idx, entry) in self
             .list_entries(width, selected, mode)
             .into_iter()
@@ -781,20 +778,28 @@ impl App {
                 .filter(|&sel| sel == idx)
                 .map_or(Span::raw("  "), |_| Span::styled("▌ ", self.theme.selected));
             let start = lines.len();
-            lines.extend(entry.into_iter().map(|line| {
-                let spans = line.spans.into_iter().map(|span| {
-                    let style = line.style.patch(span.style);
-                    span.style(style)
-                });
-                Line::from_iter(std::iter::once(gutter.clone()).chain(spans))
-            }));
+            let anchors = url_anchors(&entry);
+            let wrapped = wrap(entry, &anchors, u16::try_from(width).unwrap_or(u16::MAX));
+            let gutter_width = u16::try_from(gutter.width()).unwrap_or_default();
+            targets.extend(
+                wrapped
+                    .links
+                    .into_iter()
+                    .map(|link| link.shifted(start, gutter_width, Some(idx))),
+            );
+            lines.extend(
+                wrapped
+                    .lines
+                    .into_iter()
+                    .map(|line| Line::from_iter(std::iter::once(gutter.clone()).chain(line.spans))),
+            );
             entries.push(start..lines.len());
             lines.push(Line::default());
         }
         View {
-            links: urls(&lines),
             lines,
             entries,
+            links: targets,
         }
     }
 
@@ -886,12 +891,10 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(idx, contact)| {
-                    let mut line = title(idx, contact.label);
-                    line.spans.extend([
-                        Span::raw(": "),
-                        Span::styled(contact.value, self.theme.link),
-                    ]);
-                    vec![line]
+                    vec![
+                        title(idx, contact.label),
+                        Line::styled(contact.value, self.theme.link),
+                    ]
                 })
                 .collect(),
             Tab::About => Vec::new(),

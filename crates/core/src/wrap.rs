@@ -73,29 +73,43 @@ pub fn wrap(lines: Vec<Line<'static>>, anchors: &[Anchor], width: u16) -> Wrappe
     out
 }
 
-/// Every `https://` url written out in the text, for lines that are already laid out.
+/// Spans that are a url on their own, as anchors to themselves.
 #[must_use]
-pub fn urls(lines: &[Line<'static>]) -> Vec<Link> {
-    let mut found = Vec::new();
-    for (row, line) in lines.iter().enumerate() {
-        let mut col = 0;
-        for span in &line.spans {
-            if let Some(start) = span.content.find("https://") {
-                let url = span.content[start..]
-                    .split(|c: char| c.is_whitespace() || c == ')')
-                    .next()
-                    .unwrap_or_default();
-                let from = col + text_width(&span.content[..start]);
-                found.push(Link {
-                    url: url.to_string(),
-                    cells: vec![(row, from..from + text_width(url))],
-                    entry: None,
-                });
-            }
-            col += text_width(&span.content);
+pub fn url_anchors(lines: &[Line<'static>]) -> Vec<Anchor> {
+    lines
+        .iter()
+        .enumerate()
+        .flat_map(|(line, text)| {
+            text.spans
+                .iter()
+                .enumerate()
+                .filter_map(move |(span, part)| {
+                    let url = part.content.trim();
+                    url.starts_with("http").then(|| Anchor {
+                        line,
+                        spans: span..span + 1,
+                        url: url.to_string(),
+                    })
+                })
+        })
+        .collect()
+}
+
+impl Link {
+    /// Moves the link by whole rows and columns, for text placed after other text.
+    #[must_use]
+    pub fn shifted(self, rows: usize, cols: u16, entry: Option<usize>) -> Self {
+        let cells = self
+            .cells
+            .into_iter()
+            .map(|(row, range)| (row + rows, range.start + cols..range.end + cols))
+            .collect();
+        Self {
+            cells,
+            entry,
+            ..self
         }
     }
-    found
 }
 
 fn wrap_line(line: &Line<'static>, width: u16) -> Vec<Vec<Glyph>> {
@@ -189,10 +203,4 @@ fn to_line(glyphs: &[Glyph]) -> Line<'static> {
         last = Some((glyph.span, glyph.style));
     }
     Line::from(spans)
-}
-
-fn text_width(text: &str) -> u16 {
-    text.chars()
-        .map(|ch| u16::try_from(ch.width().unwrap_or(0)).unwrap_or(0))
-        .sum()
 }
