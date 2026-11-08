@@ -61,9 +61,20 @@ async fn run() -> Result<(), JsValue> {
         .font_atlas_config(FontAtlasConfig::dynamic(&[FONT, "monospace"], font_size))
         .canvas_padding_color(ferra::NIGHT)
         .disable_auto_css_resize();
-    // ?renderer=canvas skips webgl, for devices where it draws nothing
-    let webgl = (!location.search()?.contains("renderer=canvas"))
-        .then(|| WebGl2Backend::new_with_options(options));
+    // webgl draws nothing on some phones, so touch devices get the 2d canvas unless they ask
+    let search = location.search()?;
+    let touch = window
+        .match_media("(pointer: coarse)")?
+        .is_some_and(|query| query.matches());
+    let webgl = match (
+        search.contains("renderer=webgl"),
+        search.contains("renderer=canvas"),
+    ) {
+        (true, _) => true,
+        (_, true) => false,
+        _ => !touch,
+    };
+    let webgl = webgl.then(|| WebGl2Backend::new_with_options(options));
     match webgl {
         Some(Ok(backend)) => return launch(terminal(backend)?, &app, &window),
         Some(Err(err)) => {
@@ -76,8 +87,25 @@ async fn run() -> Result<(), JsValue> {
     (0..dead.length())
         .filter_map(|idx| dead.item(idx)?.dyn_into::<Element>().ok())
         .for_each(|canvas| canvas.remove());
-    let backend = CanvasBackend::new().map_err(|e| e.to_string())?;
+    let mut backend = CanvasBackend::new().map_err(|e| e.to_string())?;
+    backend.set_background_color(ferra::NIGHT);
+    reload_on_rotate(&window)?;
     launch(terminal(backend)?, &app, &window)
+}
+
+/// The 2d canvas keeps the size it started with, so a new width means starting over.
+fn reload_on_rotate(window: &Window) -> Result<(), JsValue> {
+    let width = window.inner_width()?.as_f64();
+    let resized = Closure::<dyn FnMut()>::new({
+        let window = window.clone();
+        move || {
+            let now = window.inner_width().ok().and_then(|w| w.as_f64());
+            _ = (now != width).then(|| window.location().reload());
+        }
+    });
+    window.add_event_listener_with_callback("resize", resized.as_ref().unchecked_ref())?;
+    resized.forget();
+    Ok(())
 }
 
 fn terminal<B: Backend>(backend: B) -> Result<Terminal<B>, JsValue> {
