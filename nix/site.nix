@@ -12,6 +12,7 @@ let
     fileset = lib.fileset.unions [
       (craneLib.fileset.commonCargoSources ../.)
       ../crates/core/posts
+      ../crates/core/art
       ../crates/web/index.html
     ];
   };

@@ -9,6 +9,7 @@ use ratatui::{
 };
 
 use crate::{
+    art::{Art, BIRD},
     blog::{Post, excerpt, load_posts, render_markdown},
     content::{self, BOOKMARKS, CONTACTS, PROJECTS},
     theme::{self, Theme},
@@ -644,6 +645,7 @@ impl App {
     }
 
     fn about_view(&self, width: u16) -> View {
+        let bird = Art::fitting(&BIRD, width).map(|art| art.lines(width));
         let intro = [
             Line::styled(content::HEADLINE.to_uppercase(), self.theme.heading),
             Line::styled(content::SUBHEADLINE, Style::new().italic()),
@@ -652,7 +654,12 @@ impl App {
         let paragraphs = content::ABOUT
             .iter()
             .flat_map(|paragraph| [Line::raw(*paragraph), Line::default()]);
-        let wrapped = wrap(intro.into_iter().chain(paragraphs).collect(), &[], width);
+        let lines = intro
+            .into_iter()
+            .chain(paragraphs)
+            .chain(bird.into_iter().flatten())
+            .collect();
+        let wrapped = wrap(lines, &[], width);
         View {
             lines: wrapped.lines,
             entries: Vec::new(),
