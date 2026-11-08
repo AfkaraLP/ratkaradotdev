@@ -134,14 +134,6 @@ pub const PROJECTS: &[Project] = &[
         site: None,
     },
     Project {
-        name: "sexditor",
-        description: "Text editor built to learn ratatui: regex highlighting, helix motions, editing and saving",
-        kind: "Rust",
-        host: &GITHUB,
-        id: "afkaralp/sexditor",
-        site: None,
-    },
-    Project {
         name: "rustlean-gguf",
         description: "Rust fill-in-the-middle completion model (Qwen2.5-Coder 1.5B + LoRA). Came out of an autonomous research run on getting fast but smart code completion on my RTX 2070 Super",
         kind: "Hugging Face · model",
