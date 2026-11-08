@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, bail};
-use ratkara_core::{App, Platform};
+use ratkara_core::{App, Platform, content};
 
 const START: &str = "<!-- meta -->";
 const END: &str = "<!-- /meta -->";
@@ -62,6 +62,11 @@ fn main() -> anyhow::Result<()> {
 
 fn meta(app: &App, url: &str, image: &str) -> String {
     let title = escape(&app.title());
+    // previews show the site name on their own, the tab title keeps it
+    let heading = escape(
+        app.title()
+            .trim_end_matches(&format!(" · {}", content::NAME)),
+    );
     let description = escape(&app.description());
     let (kind, published) = match app.date() {
         Some(date) => (
@@ -79,7 +84,7 @@ fn meta(app: &App, url: &str, image: &str) -> String {
     <meta name="description" content="{description}" />
     <meta property="og:site_name" content="AfkaraLP" />
     <meta property="og:type" content="{kind}" />
-    <meta property="og:title" content="{title}" />
+    <meta property="og:title" content="{heading}" />
     <meta property="og:description" content="{description}" />
     <meta property="og:url" content="{url}" />
     <meta property="og:image" content="{image}" />
@@ -87,7 +92,7 @@ fn meta(app: &App, url: &str, image: &str) -> String {
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="{image}" />
-    <meta name="twitter:title" content="{title}" />
+    <meta name="twitter:title" content="{heading}" />
     <meta name="twitter:description" content="{description}" />
     <link rel="canonical" href="{url}" />{published}"#
     )
