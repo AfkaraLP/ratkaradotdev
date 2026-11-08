@@ -60,21 +60,24 @@ async fn run() -> Result<(), JsValue> {
     let options = WebGl2BackendOptions::new()
         .font_atlas_config(FontAtlasConfig::dynamic(&[FONT, "monospace"], font_size))
         .canvas_padding_color(ferra::NIGHT)
-        .disable_auto_css_resize()
-        .enable_hyperlinks();
-    match WebGl2Backend::new_with_options(options) {
-        Ok(backend) => launch(terminal(backend)?, &app, &window),
-        Err(err) => {
+        .disable_auto_css_resize();
+    // ?renderer=canvas skips webgl, for devices where it draws nothing
+    let webgl = (!location.search()?.contains("renderer=canvas"))
+        .then(|| WebGl2Backend::new_with_options(options));
+    match webgl {
+        Some(Ok(backend)) => return launch(terminal(backend)?, &app, &window),
+        Some(Err(err)) => {
             let msg = format!("webgl2 unavailable ({err}), falling back to a 2d canvas");
             web_sys::console::warn_1(&msg.into());
-            let dead = document.query_selector_all("canvas")?;
-            (0..dead.length())
-                .filter_map(|idx| dead.item(idx)?.dyn_into::<Element>().ok())
-                .for_each(|canvas| canvas.remove());
-            let backend = CanvasBackend::new().map_err(|e| e.to_string())?;
-            launch(terminal(backend)?, &app, &window)
         }
+        None => {}
     }
+    let dead = document.query_selector_all("canvas")?;
+    (0..dead.length())
+        .filter_map(|idx| dead.item(idx)?.dyn_into::<Element>().ok())
+        .for_each(|canvas| canvas.remove());
+    let backend = CanvasBackend::new().map_err(|e| e.to_string())?;
+    launch(terminal(backend)?, &app, &window)
 }
 
 fn terminal<B: Backend>(backend: B) -> Result<Terminal<B>, JsValue> {

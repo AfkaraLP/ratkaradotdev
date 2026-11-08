@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::{
@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use crate::theme::Theme;
+use crate::{theme::Theme, wrap::Anchor};
 
 include!(concat!(env!("OUT_DIR"), "/posts.rs"));
 
@@ -80,11 +80,20 @@ pub fn excerpt(body: &str, max: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', '.', ':', ';']))
 }
 
+pub struct Markdown {
+    pub lines: Vec<Line<'static>>,
+    pub anchors: Vec<Anchor>,
+}
+
+/// `expand` writes each link's url after its text, for output that can't be clicked.
 #[must_use]
-pub fn render_markdown(src: &str, theme: &'static Theme) -> Vec<Line<'static>> {
+pub fn render_markdown(src: &str, theme: &'static Theme, expand: bool) -> Markdown {
     Renderer {
         theme,
+        expand,
         lines: Vec::new(),
+        anchors: Vec::new(),
+        pending: Vec::new(),
         spans: Vec::new(),
         styles: Vec::new(),
         lists: Vec::new(),
@@ -97,18 +106,23 @@ pub fn render_markdown(src: &str, theme: &'static Theme) -> Vec<Line<'static>> {
 
 struct Renderer {
     theme: &'static Theme,
+    expand: bool,
     lines: Vec<Line<'static>>,
+    anchors: Vec<Anchor>,
+    /// Finished links on the current line, by span.
+    pending: Vec<(Range<usize>, String)>,
     spans: Vec<Span<'static>>,
     styles: Vec<Style>,
     /// `None` for bullet lists, `Some(n)` for the next number of an ordered list.
     lists: Vec<Option<u64>>,
     quote_depth: usize,
     code_block: bool,
-    link: Option<String>,
+    /// The link being written: its first span and url.
+    link: Option<(usize, String)>,
 }
 
 impl Renderer {
-    fn run(mut self, src: &str) -> Vec<Line<'static>> {
+    fn run(mut self, src: &str) -> Markdown {
         let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
         for event in Parser::new_ext(src, options) {
             self.event(event);
@@ -117,7 +131,10 @@ impl Renderer {
         while self.lines.last().is_some_and(|line| line.spans.is_empty()) {
             self.lines.pop();
         }
-        self.lines
+        Markdown {
+            lines: self.lines,
+            anchors: self.anchors,
+        }
     }
 
     fn style(&self) -> Style {
@@ -138,6 +155,16 @@ impl Renderer {
                 "▌ ".repeat(self.quote_depth),
                 self.theme.muted,
             ));
+        }
+        let (line, shift) = (self.lines.len(), spans.len());
+        self.anchors
+            .extend(self.pending.drain(..).map(|(spans, url)| Anchor {
+                line,
+                spans: spans.start + shift..spans.end + shift,
+                url,
+            }));
+        if let Some((start, _)) = &mut self.link {
+            *start = 0;
         }
         spans.append(&mut self.spans);
         self.lines.push(Line::from(spans));
@@ -234,7 +261,7 @@ impl Renderer {
             Tag::Link { dest_url, .. } => {
                 let link = self.theme.link;
                 self.push_style(|s| s.patch(link));
-                self.link = Some(dest_url.to_string());
+                self.link = Some((self.spans.len(), dest_url.to_string()));
             }
             _ => {}
         }
@@ -270,12 +297,15 @@ impl Renderer {
             }
             TagEnd::Link => {
                 self.styles.pop();
-                if let Some(url) = self.link.take() {
-                    self.spans.push(Span::styled(
-                        format!(" ({url})"),
-                        self.theme.muted.remove_modifier(Modifier::UNDERLINED),
-                    ));
-                }
+                let Some((start, url)) = self.link.take() else {
+                    return;
+                };
+                let muted = self.theme.muted.remove_modifier(Modifier::UNDERLINED);
+                let expanded = self
+                    .expand
+                    .then(|| Span::styled(format!(" ({url})"), muted));
+                self.pending.push((start..self.spans.len(), url));
+                self.spans.extend(expanded);
             }
             _ => {}
         }

@@ -7,6 +7,7 @@ edition.workspace = true
 anyhow = "1.0.104"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
+unicode-width = "0.2.3"
 
 [lints]
 workspace = true

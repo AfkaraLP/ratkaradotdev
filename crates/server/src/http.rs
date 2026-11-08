@@ -59,9 +59,13 @@ async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Respons
         }
         (None, ..) => next.run(req).await,
     };
-    response
-        .headers_mut()
-        .insert(header::VARY, HeaderValue::from_static("user-agent"));
+    let headers = response.headers_mut();
+    headers.insert(header::VARY, HeaderValue::from_static("user-agent"));
+    // keeps cloudflare from rewriting the page, rocket loader wraps the wasm loader script
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-transform"),
+    );
     response
 }
 

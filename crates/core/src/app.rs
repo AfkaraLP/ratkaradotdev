@@ -12,6 +12,7 @@ use crate::{
     blog::{Post, excerpt, load_posts, render_markdown},
     content::{self, BOOKMARKS, CONTACTS, PROJECTS},
     theme::{self, Theme},
+    wrap::{Anchor, Link, urls, wrap},
 };
 
 const MAX_WIDTH: u16 = 100;
@@ -113,15 +114,7 @@ enum Hit {
     Tab(Tab),
     Key(Key),
     Item(usize),
-    /// Raw URL text, the web backend opens those itself.
-    Ignore,
-}
-
-struct Link {
-    url: String,
-    /// Wrapped row in text views, line in lists.
-    row: usize,
-    entry: Option<usize>,
+    Link(usize),
 }
 
 #[derive(Default)]
@@ -132,9 +125,11 @@ struct Frame {
     max_scroll: u16,
 }
 
+/// Laid out rows, ready to render as they are.
 struct View {
     lines: Vec<Line<'static>>,
     entries: Vec<Range<usize>>,
+    links: Vec<Link>,
 }
 
 #[derive(Clone, Copy)]
@@ -363,7 +358,7 @@ impl App {
         let links = &self.last.links;
         let start = links.iter().position(|link| match link.entry {
             Some(entry) => entry >= sel,
-            None => link.row >= top,
+            None => link.row() >= top,
         });
         self.visual = (!links.is_empty()).then(|| start.unwrap_or(0));
     }
@@ -417,7 +412,12 @@ impl App {
                 self.select(idx);
                 self.activate()
             }
-            Some(Hit::Ignore) | None => Action::None,
+            Some(Hit::Link(idx)) => self
+                .last
+                .links
+                .get(idx)
+                .map_or(Action::None, |link| Action::Open(link.url.clone())),
+            None => Action::None,
         }
     }
 
@@ -456,7 +456,7 @@ impl App {
         let view = self.view(inner.width, Mode::Tui);
         match self.item_count() {
             Some(_) => self.draw_list(frame, inner, view),
-            None => self.draw_text(frame, inner, view.lines),
+            None => self.draw_text(frame, inner, view),
         }
         self.draw_footer(frame, footer);
     }
@@ -559,58 +559,48 @@ impl App {
         }
     }
 
-    fn mark_links(&mut self, lines: &mut [Line<'static>]) {
-        self.last.links.clear();
-        for (row, line) in lines.iter_mut().enumerate() {
-            for span in &mut line.spans {
-                let Some(start) = span.content.find("https://") else {
-                    continue;
-                };
-                let url = span.content[start..]
-                    .split(|c: char| c.is_whitespace() || c == ')')
-                    .next()
-                    .unwrap_or_default()
-                    .to_string();
-                if self.visual == Some(self.last.links.len()) {
-                    span.style = span.style.patch(self.theme.selected.reversed());
-                }
-                self.last.links.push(Link {
-                    url,
-                    row,
-                    entry: None,
-                });
-            }
-        }
+    /// Makes the visible part of every link clickable, and highlights the one picked in visual mode.
+    fn draw_links(&mut self, frame: &mut ratatui::Frame, area: Rect, offset: usize) {
+        let visible = offset..offset + usize::from(area.height);
+        let cells = self.last.links.iter().enumerate().flat_map(|(idx, link)| {
+            link.cells
+                .iter()
+                .filter(|(row, _)| visible.contains(row))
+                .map(move |(row, cols)| {
+                    let y = u16::try_from(row - offset).unwrap_or_default();
+                    let rect = Rect::new(area.x + cols.start, area.y + y, cols.end - cols.start, 1);
+                    (rect.intersection(area), idx)
+                })
+        });
+        let hits: Vec<_> = cells.collect();
+        let selected = self.theme.selected.reversed();
+        hits.iter()
+            .filter(|&&(_, idx)| self.visual == Some(idx))
+            .for_each(|&(rect, _)| frame.buffer_mut().set_style(rect, selected));
+        self.last
+            .hits
+            .extend(hits.into_iter().map(|(rect, idx)| (rect, Hit::Link(idx))));
     }
 
-    fn draw_text(&mut self, frame: &mut ratatui::Frame, area: Rect, mut lines: Vec<Line<'static>>) {
-        let wrap = Wrap { trim: false };
-        self.mark_links(&mut lines);
-        for link in &mut self.last.links {
-            link.row = Paragraph::new(lines[..link.row].to_vec())
-                .wrap(wrap)
-                .line_count(area.width);
-        }
-
-        let paragraph = Paragraph::new(lines).wrap(wrap);
-        let height = u16::try_from(paragraph.line_count(area.width)).unwrap_or(u16::MAX);
+    fn draw_text(&mut self, frame: &mut ratatui::Frame, area: Rect, view: View) {
+        self.last.links = view.links;
+        let height = u16::try_from(view.lines.len()).unwrap_or(u16::MAX);
         self.last.max_scroll = height.saturating_sub(area.height);
         if let Some(link) = self.visual.and_then(|idx| self.last.links.get(idx)) {
-            let row = u16::try_from(link.row).unwrap_or(u16::MAX);
+            let row = u16::try_from(link.row()).unwrap_or(u16::MAX);
             let top = (row + 1).saturating_sub(area.height.max(1));
             self.scroll = self.scroll.clamp(top, row);
         }
         self.scroll = self.scroll.min(self.last.max_scroll);
-        frame.render_widget(paragraph.scroll((self.scroll, 0)), area);
+        frame.render_widget(Paragraph::new(view.lines).scroll((self.scroll, 0)), area);
+        self.draw_links(frame, area, usize::from(self.scroll));
     }
 
-    fn draw_list(&mut self, frame: &mut ratatui::Frame, area: Rect, mut view: View) {
-        self.mark_links(&mut view.lines);
+    fn draw_list(&mut self, frame: &mut ratatui::Frame, area: Rect, view: View) {
+        self.last.links = view.links;
         for link in &mut self.last.links {
-            link.entry = view
-                .entries
-                .iter()
-                .position(|range| range.contains(&link.row));
+            let row = link.row();
+            link.entry = view.entries.iter().position(|range| range.contains(&row));
         }
 
         let height = area.height as usize;
@@ -618,32 +608,25 @@ impl App {
             .entries
             .get(self.selected())
             .map_or(0, |range| range.start.min(range.end.saturating_sub(height)));
-        let visible = offset..offset + height;
+        let end = offset + height;
 
-        let rect = |rows: &Range<usize>| {
-            let y = u16::try_from(rows.start - offset).unwrap_or_default();
-            let h = u16::try_from(rows.len()).unwrap_or_default();
-            Rect::new(area.x, area.y + y, area.width, h)
-        };
-        let items = view.entries.iter().enumerate().map(|(idx, range)| {
-            (
-                range.start.max(offset)..range.end.min(visible.end),
-                Hit::Item(idx),
-            )
-        });
-        let urls = visible
-            .clone()
-            .filter(|&row| view.lines.get(row).is_some_and(has_url))
-            .map(|row| (row..row + 1, Hit::Ignore));
-        let hits: Vec<_> = items
-            .chain(urls)
+        let hits: Vec<_> = view
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(idx, range)| (range.start.max(offset)..range.end.min(end), idx))
             .filter(|(rows, _)| !rows.is_empty())
-            .map(|(rows, hit)| (rect(&rows), hit))
+            .map(|(rows, idx)| {
+                let y = u16::try_from(rows.start - offset).unwrap_or_default();
+                let h = u16::try_from(rows.len()).unwrap_or_default();
+                (Rect::new(area.x, area.y + y, area.width, h), Hit::Item(idx))
+            })
             .collect();
         self.last.hits.extend(hits);
 
         let lines: Vec<Line> = view.lines.into_iter().skip(offset).take(height).collect();
         frame.render_widget(Paragraph::new(lines), area);
+        self.draw_links(frame, area, offset);
     }
 
     fn section(&self) -> &'static str {
@@ -653,14 +636,14 @@ impl App {
     fn view(&self, width: u16, mode: Mode) -> View {
         match self.page {
             Page::Post(idx) => self.post_view(idx, width, mode),
-            Page::Tab(Tab::About) => self.about_view(),
+            Page::Tab(Tab::About) => self.about_view(width),
             Page::Tab(_) | Page::NotFound => {
                 self.list_view(usize::from(width).saturating_sub(2), mode)
             }
         }
     }
 
-    fn about_view(&self) -> View {
+    fn about_view(&self, width: u16) -> View {
         let intro = [
             Line::styled(content::HEADLINE.to_uppercase(), self.theme.heading),
             Line::styled(content::SUBHEADLINE, Style::new().italic()),
@@ -669,9 +652,11 @@ impl App {
         let paragraphs = content::ABOUT
             .iter()
             .flat_map(|paragraph| [Line::raw(*paragraph), Line::default()]);
+        let wrapped = wrap(intro.into_iter().chain(paragraphs).collect(), &[], width);
         View {
-            lines: intro.into_iter().chain(paragraphs).collect(),
+            lines: wrapped.lines,
             entries: Vec::new(),
+            links: wrapped.links,
         }
     }
 
@@ -687,11 +672,27 @@ impl App {
             Line::styled("─".repeat(width.into()), self.theme.muted),
             Line::default(),
         ];
-        lines.extend(render_markdown(post.body, self.theme));
+        // urls are only written out where links can't be clicked
+        let expand = match (self.platform, mode) {
+            (Platform::Web, Mode::Tui) => false,
+            (Platform::Ssh, _) | (_, Mode::Print(_)) => true,
+        };
+        let markdown = render_markdown(post.body, self.theme, expand);
+        let anchors: Vec<_> = markdown
+            .anchors
+            .into_iter()
+            .map(|anchor| Anchor {
+                line: anchor.line + lines.len(),
+                ..anchor
+            })
+            .collect();
+        lines.extend(markdown.lines);
         lines.extend([Line::default(), Line::styled(back, self.theme.muted)]);
+        let wrapped = wrap(lines, &anchors, width);
         View {
-            lines,
+            lines: wrapped.lines,
             entries: Vec::new(),
+            links: wrapped.links,
         }
     }
 
@@ -722,7 +723,11 @@ impl App {
             entries.push(start..lines.len());
             lines.push(Line::default());
         }
-        View { lines, entries }
+        View {
+            links: urls(&lines),
+            lines,
+            entries,
+        }
     }
 
     fn list_header(&self, width: usize) -> Vec<Line<'static>> {
@@ -926,12 +931,6 @@ fn tab_layout(width: u16) -> Vec<Vec<(Tab, String)>> {
         used += len + 1;
     }
     rows
-}
-
-fn has_url(line: &Line) -> bool {
-    line.spans
-        .iter()
-        .any(|span| span.content.contains("https://"))
 }
 
 fn wrapped(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
