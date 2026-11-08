@@ -1,6 +1,10 @@
 //! usage: ratkara-pages <dist> [site-url]
 
-use std::{env, fs, path::Path};
+use std::{
+    env, fs,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+};
 
 use anyhow::{Context, bail};
 use ratkara_core::{App, Platform};
@@ -21,8 +25,15 @@ fn main() -> anyhow::Result<()> {
     let (Some(start), Some(end)) = (template.find(START), template.find(END)) else {
         bail!("index.html is missing the {START} ... {END} block");
     };
+    // previews and cloudflare cache the image by url, so a new image needs a new url
+    let mut hasher = DefaultHasher::new();
+    fs::read(dist.join("og.png"))
+        .context("reading og.png")?
+        .hash(&mut hasher);
+    let image = format!("{site}/og.png?v={:x}", hasher.finish());
+
     let page = |app: &App, route: &str| {
-        let head = meta(app, &format!("{site}/{route}"), &format!("{site}/og.png"));
+        let head = meta(app, &format!("{site}/{route}"), &image);
         format!(
             "{}{head}{}",
             &template[..start],
