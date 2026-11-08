@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         bail!("index.html is missing the {START} ... {END} block");
     };
     let page = |app: &App, route: &str| {
-        let head = meta(app, &format!("{site}/{route}"));
+        let head = meta(app, &format!("{site}/{route}"), &format!("{site}/og.png"));
         format!(
             "{}{head}{}",
             &template[..start],
@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn meta(app: &App, url: &str) -> String {
+fn meta(app: &App, url: &str, image: &str) -> String {
     let title = escape(&app.title());
     let description = escape(&app.description());
     let (kind, published) = match app.date() {
@@ -71,7 +71,11 @@ fn meta(app: &App, url: &str) -> String {
     <meta property="og:title" content="{title}" />
     <meta property="og:description" content="{description}" />
     <meta property="og:url" content="{url}" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="{image}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="{image}" />
     <meta name="twitter:title" content="{title}" />
     <meta name="twitter:description" content="{description}" />
     <link rel="canonical" href="{url}" />{published}"#

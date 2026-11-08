@@ -30,7 +30,11 @@ pub async fn serve(
 ) -> anyhow::Result<()> {
     let files = web_dir.map_or_else(Router::new, |dir| {
         let not_found = ServeFile::new(dir.join("404.html"));
-        Router::new().fallback_service(ServeDir::new(dir).not_found_service(not_found))
+        Router::new().fallback_service(
+            ServeDir::new(dir)
+                .redirect_to_trailing_slash(false)
+                .not_found_service(not_found),
+        )
     });
     let site = Site {
         stats,
@@ -60,6 +64,9 @@ async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Respons
         (None, ..) => next.run(req).await,
     };
     let headers = response.headers_mut();
+    // nix store files are all dated 1970, so these would call any page unchanged
+    headers.remove(header::LAST_MODIFIED);
+    headers.remove(header::ETAG);
     headers.insert(header::VARY, HeaderValue::from_static("user-agent"));
     // keeps cloudflare from rewriting the page, rocket loader wraps the wasm loader script
     headers.insert(
