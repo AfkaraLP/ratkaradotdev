@@ -11,6 +11,7 @@ pub struct Theme {
     pub selected: Style,
     pub border: Style,
     pub border_focus: Style,
+    pub hover: Style,
 }
 
 pub const ANSI: Theme = Theme {
@@ -26,6 +27,7 @@ pub const ANSI: Theme = Theme {
     selected: Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
     border: Style::new().fg(Color::DarkGray),
     border_focus: Style::new().fg(Color::Yellow),
+    hover: Style::new().bg(Color::DarkGray),
 };
 
 /// <https://github.com/casperstorm/ferra>
@@ -56,4 +58,5 @@ pub const FERRA: Theme = Theme {
     selected: Style::new().fg(ferra::CORAL).add_modifier(Modifier::BOLD),
     border: Style::new().fg(ferra::UMBER),
     border_focus: Style::new().fg(ferra::BARK),
+    hover: Style::new().bg(ferra::UMBER),
 };

@@ -110,7 +110,7 @@ impl Page {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hit {
     Tab(Tab),
     Key(Key),
@@ -148,6 +148,7 @@ pub struct App {
     selected: [usize; Tab::ALL.len()],
     scroll: u16,
     visual: Option<usize>,
+    hover: Option<Position>,
     status: Option<String>,
     stats: Vec<Option<u32>>,
     year: u32,
@@ -168,6 +169,7 @@ impl App {
             selected: [0; Tab::ALL.len()],
             scroll: 0,
             visual: None,
+            hover: None,
             status: None,
             stats: vec![None; PROJECTS.len()],
             year,
@@ -393,9 +395,27 @@ impl App {
         Action::None
     }
 
+    /// Moves the pointer, `None` once it leaves. Returns whether a click there would do something.
+    pub fn hover(&mut self, at: Option<(u16, u16)>) -> bool {
+        self.hover = at.map(|(col, row)| Position::new(col, row));
+        self.hovered().is_some()
+    }
+
+    fn hovered(&self) -> Option<(Rect, Hit)> {
+        let pos = self.hover?;
+        self.last
+            .hits
+            .iter()
+            .rev()
+            .find(|(rect, _)| rect.contains(pos))
+            .copied()
+    }
+
     pub fn click(&mut self, col: u16, row: u16) -> Action {
         self.status = None;
         self.visual = None;
+        // taps on touch screens leave no pointer behind
+        self.hover = None;
         let pos = Position::new(col, row);
         let hit = self
             .last
@@ -460,6 +480,25 @@ impl App {
             None => self.draw_text(frame, inner, view),
         }
         self.draw_footer(frame, footer);
+        self.draw_hover(frame);
+    }
+
+    fn draw_hover(&self, frame: &mut ratatui::Frame) {
+        let rects = match self.hovered() {
+            Some((_, Hit::Link(idx))) => self
+                .last
+                .hits
+                .iter()
+                .filter(|(_, hit)| *hit == Hit::Link(idx))
+                .map(|(rect, _)| *rect)
+                .collect(),
+            Some((_, Hit::Tab(tab))) if tab == self.page.tab() => Vec::new(),
+            Some((rect, Hit::Tab(_) | Hit::Key(_))) => vec![rect],
+            Some((_, Hit::Item(_))) | None => Vec::new(),
+        };
+        for rect in rects {
+            frame.buffer_mut().set_style(rect, self.theme.hover);
+        }
     }
 
     fn draw_header(
@@ -482,7 +521,13 @@ impl App {
             name.push(Span::styled(content::TAGLINE, Style::new().italic()));
         }
         frame.render_widget(Line::from(name), brand);
-        self.last.hits.push((brand, Hit::Tab(Tab::About)));
+        let name = Rect {
+            width: u16::try_from(content::NAME.len()).unwrap_or_default(),
+            ..brand
+        };
+        self.last
+            .hits
+            .push((name.intersection(brand), Hit::Tab(Tab::About)));
 
         for (y, row) in (tabs.y..).zip(tab_rows) {
             let mut x = tabs.x;

@@ -129,23 +129,30 @@ where
         })
         .map_err(|e| e.to_string())?;
 
-    terminal
-        .on_mouse_event({
-            let (app, window) = (app.clone(), window.clone());
-            move |event| {
-                if event.kind == MouseEventKind::SingleClick(MouseButton::Left) {
-                    let action = app.borrow_mut().click(event.col, event.row);
-                    perform(&window, &app.borrow(), action);
-                }
-            }
-        })
-        .map_err(|e| e.to_string())?;
-
     let document = window.document().ok_or("no document")?;
     let canvas: HtmlElement = document
         .query_selector("canvas")?
         .ok_or("no canvas")?
         .dyn_into()?;
+
+    terminal
+        .on_mouse_event({
+            let (app, window, canvas) = (app.clone(), window.clone(), canvas.clone());
+            move |event| match event.kind {
+                MouseEventKind::SingleClick(MouseButton::Left) => {
+                    let action = app.borrow_mut().click(event.col, event.row);
+                    perform(&window, &app.borrow(), action);
+                }
+                MouseEventKind::Moved => {
+                    let clickable = app.borrow_mut().hover(Some((event.col, event.row)));
+                    let cursor = ["default", "pointer"][usize::from(clickable)];
+                    _ = canvas.style().set_property("cursor", cursor);
+                }
+                MouseEventKind::Exited => _ = app.borrow_mut().hover(None),
+                _ => {}
+            }
+        })
+        .map_err(|e| e.to_string())?;
     let (_, row) = terminal.backend().cell_size_css_px();
     scroll_gestures(&canvas, app, f64::from(row))?;
     _ = canvas.focus();
