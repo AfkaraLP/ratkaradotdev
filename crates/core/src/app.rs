@@ -110,6 +110,9 @@ impl Page {
     }
 }
 
+/// Footer hint: its keys, each clickable on its own, and a label.
+type Hint = (&'static [(&'static str, Key)], &'static str);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hit {
     Tab(Tab),
@@ -550,26 +553,30 @@ impl App {
             return;
         }
 
-        let tabs = ("←→", "tabs", Key::Right);
-        let mut hints = match (self.visual, self.item_count()) {
+        let arrows = |label| ([("↑", Key::Up), ("↓", Key::Down)].as_slice(), label);
+        let tabs: Hint = (&[("←", Key::Left), ("→", Key::Right)], "tabs");
+        let mut hints: Vec<Hint> = match (self.visual, self.item_count()) {
             (Some(_), _) => vec![
-                ("-- VISUAL --", "", Key::Char('v')),
-                ("jk", "next", Key::Char('j')),
-                ("↵", "open", Key::Enter),
-                ("esc", "exit", Key::Esc),
+                (&[("-- VISUAL --", Key::Char('v'))], ""),
+                (&[("j", Key::Char('j')), ("k", Key::Char('k'))], "next"),
+                (&[("↵", Key::Enter)], "open"),
+                (&[("esc", Key::Esc)], "exit"),
             ],
-            (None, Some(_)) => vec![tabs, ("↑↓", "select", Key::Down), ("↵", "open", Key::Enter)],
-            (None, None) => vec![tabs, ("↑", "", Key::Up), ("↓", "scroll", Key::Down)],
+            (None, Some(_)) => vec![tabs, arrows("select"), (&[("↵", Key::Enter)], "open")],
+            (None, None) => vec![tabs, arrows("scroll")],
         };
-        let extras = [
-            (!self.last.links.is_empty(), ("v", "links", Key::Char('v'))),
+        let extras: [(bool, Hint); 3] = [
+            (
+                !self.last.links.is_empty(),
+                (&[("v", Key::Char('v'))], "links"),
+            ),
             (
                 self.page != Page::Tab(Tab::About),
-                ("esc", "back", Key::Esc),
+                (&[("esc", Key::Esc)], "back"),
             ),
             (
                 self.platform == Platform::Ssh,
-                ("q", "quit", Key::Char('q')),
+                (&[("q", Key::Char('q'))], "quit"),
             ),
         ];
         hints.extend(
@@ -579,10 +586,13 @@ impl App {
                 .map(|(_, hint)| hint),
         );
 
-        let width = |key: &str, label: &str| {
-            key.chars().count() + label.len() + usize::from(!label.is_empty())
-        };
-        let hints_width: usize = hints.iter().map(|(k, l, _)| width(k, l) + 1).sum();
+        let glyphs =
+            |keys: &[(&str, Key)]| keys.iter().map(|(g, _)| g.chars().count()).sum::<usize>();
+        let label_width = |label: &str| (label.len() + 1) * usize::from(!label.is_empty());
+        let hints_width: usize = hints
+            .iter()
+            .map(|(keys, label)| glyphs(keys) + label_width(label) + 1)
+            .sum();
         let copyright = format!("© {} {}", self.year, content::NAME);
         if (inner.width as usize) >= hints_width + copyright.chars().count() {
             frame.render_widget(
@@ -591,16 +601,22 @@ impl App {
             );
         }
 
+        // every key is its own click target, the label does what the last key does
         let mut x = inner.x;
-        for (key, label, action) in hints {
-            let w = u16::try_from(width(key, label)).unwrap_or_default();
-            let rect = Rect::new(x, inner.y, w, 1).intersection(inner);
-            let mut spans = vec![Span::styled(key, self.theme.accent)];
-            if !label.is_empty() {
-                spans.push(Span::styled(format!(" {label}"), self.theme.muted));
+        for (keys, label) in hints {
+            for &(glyph, key) in keys {
+                let w = u16::try_from(glyph.chars().count()).unwrap_or_default();
+                let rect = Rect::new(x, inner.y, w, 1).intersection(inner);
+                frame.render_widget(Span::styled(glyph, self.theme.accent), rect);
+                self.last.hits.push((rect, Hit::Key(key)));
+                x = x.saturating_add(w);
             }
-            frame.render_widget(Line::from(spans), rect);
-            self.last.hits.push((rect, Hit::Key(action)));
+            let w = u16::try_from(label_width(label)).unwrap_or_default();
+            let rect = Rect::new(x, inner.y, w, 1).intersection(inner);
+            frame.render_widget(Span::styled(format!(" {label}"), self.theme.muted), rect);
+            if let Some(&(_, key)) = keys.last() {
+                self.last.hits.push((rect, Hit::Key(key)));
+            }
             x = x.saturating_add(w + 1);
         }
     }
