@@ -15,6 +15,7 @@ let
       ../crates/core/art
       ../crates/web/index.html
       ../crates/web/og.png
+      ../crates/web/favicon.ico
     ];
   };
   siteUrl = "https://afkara.dev";
