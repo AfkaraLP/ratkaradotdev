@@ -50,10 +50,10 @@ pub async fn serve(
 
 async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Response {
     let agent = header_str(req.headers(), header::USER_AGENT.as_str());
-    let text = CLI_AGENTS
-        .iter()
-        .any(|cli| agent.starts_with(cli))
-        .then(|| site.print(&req));
+    // files stay files, cloudflare caches them by extension for every user agent
+    let page = std::path::Path::new(req.uri().path()).extension().is_none();
+    let cli = CLI_AGENTS.iter().any(|cli| agent.starts_with(cli));
+    let text = (page && cli).then(|| site.print(&req));
     let insecure = header_str(req.headers(), "cf-visitor").contains(r#""scheme":"http""#);
     let mut response = match (text, insecure, &site.url) {
         (Some(text), ..) => text,
