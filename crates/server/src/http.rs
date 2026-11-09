@@ -13,8 +13,6 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{current_year, stats::Stats};
 
 const CLI_AGENTS: &[&str] = &["curl/", "Wget/", "HTTPie/", "xh/", "nushell"];
-/// Link preview fetchers, logged to see what they get.
-const CRAWLERS: &[&str] = &["bot", "Bot", "facebookexternalhit", "WhatsApp", "Slack"];
 const WIDTH: u16 = 80;
 
 #[derive(Clone)]
@@ -51,8 +49,7 @@ pub async fn serve(
 }
 
 async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Response {
-    let agent = header_str(req.headers(), header::USER_AGENT.as_str()).to_owned();
-    let (method, path) = (req.method().clone(), req.uri().clone());
+    let agent = header_str(req.headers(), header::USER_AGENT.as_str());
     // files stay files, cloudflare caches them by extension for every user agent
     let page = std::path::Path::new(req.uri().path()).extension().is_none();
     let cli = CLI_AGENTS.iter().any(|cli| agent.starts_with(cli));
@@ -66,22 +63,9 @@ async fn terminal(State(site): State<Site>, req: Request, next: Next) -> Respons
         }
         (None, ..) => next.run(req).await,
     };
-    if CRAWLERS.iter().any(|crawler| agent.contains(crawler)) {
-        eprintln!(
-            "crawler {method} {path} -> {} \"{agent}\"",
-            response.status()
-        );
-    }
-    let headers = response.headers_mut();
-    // nix store files are all dated 1970, so these would call any page unchanged
-    headers.remove(header::LAST_MODIFIED);
-    headers.remove(header::ETAG);
-    headers.insert(header::VARY, HeaderValue::from_static("user-agent"));
-    // keeps cloudflare from rewriting the page, rocket loader wraps the wasm loader script
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-transform"),
-    );
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("user-agent"));
     response
 }
 

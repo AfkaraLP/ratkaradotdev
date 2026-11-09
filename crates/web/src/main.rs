@@ -61,20 +61,11 @@ async fn run() -> Result<(), JsValue> {
         .font_atlas_config(FontAtlasConfig::dynamic(&[FONT, "monospace"], font_size))
         .canvas_padding_color(ferra::NIGHT)
         .disable_auto_css_resize();
-    // webgl draws nothing on some phones, so touch devices get the 2d canvas unless they ask
-    let search = location.search()?;
+    // webgl draws nothing on some phones, so touch devices get the 2d canvas
     let touch = window
         .match_media("(pointer: coarse)")?
         .is_some_and(|query| query.matches());
-    let webgl = match (
-        search.contains("renderer=webgl"),
-        search.contains("renderer=canvas"),
-    ) {
-        (true, _) => true,
-        (_, true) => false,
-        _ => !touch,
-    };
-    let webgl = webgl.then(|| WebGl2Backend::new_with_options(options));
+    let webgl = (!touch).then(|| WebGl2Backend::new_with_options(options));
     match webgl {
         Some(Ok(backend)) => return launch(terminal(backend)?, &app, &window),
         Some(Err(err)) => {
