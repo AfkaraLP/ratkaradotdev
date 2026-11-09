@@ -276,6 +276,19 @@ pub const BOOKMARKS: &[Bookmark] = &[
             "research",
         ],
     },
+    Bookmark {
+        title: "The Ultimate MoE Training Handbook",
+        url: "https://huggingface.co/spaces/huggingface/moe-blogpost",
+        description: "A hands-on guide to training Mixture-of-Experts models: the router, load balancing, experts, block layout, training and systems, setting by setting",
+        tags: &[
+            "article",
+            "huggingface",
+            "machine-learning",
+            "moe",
+            "training",
+            "research",
+        ],
+    },
 ];
 
 /// Civil year from a unix timestamp (Howard Hinnant's `civil_from_days`).
